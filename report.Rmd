@@ -1,0 +1,477 @@
+---
+title: 'CSN: lab 6'
+author: "Sergio H. Martínez Mateu"
+date: "28/11/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warnings = FALSE, fig.width = 16, fig.height = 18)
+library(data.table)
+library(igraph)
+library(nlstools) # For NLS
+library(minpack.lm) # For NLS2
+library(stats4) # For MLE
+library(viridis) # Plots
+library(VGAM) # For the Riemann-Zeta function
+library(kableExtra) # For tables
+library(ggplot2)
+```
+
+# Input
+## Own input
+```{r}
+# Read degree distribution files
+degrees <- fread("out/degreees.txt", data.table = F)
+degrees <- unname(t(degrees)[,1])
+
+# Store them in a list
+degreeDistributions <- list(BA = degrees, BA_RA = NULL, BA_NG = NULL)
+```
+
+```{r}
+# List files
+files <- list.files("out")
+ts.files <- files[grep("tracked", files)]
+
+# Read time series files
+timeseries <- data.frame(matrix(NA, nrow = 4, ncol = 10000, dimnames = list(x = c("AT1", "AT10", "AT100", "AT1000"), y = 1:10000)))
+for(i in 1:length(ts.files)){
+  dot <- fread(paste0("out/",ts.files[i]), data.table = F)
+  dot <- unname(t(dot)[,1])
+  timeseries[i,] <- dot
+}
+
+ts <- reshape(data = timeseries, varying = names(timeseries), v.names = "degree", timevar = "t", sep = "", direction = "long", idvar = "ti", ids = c(1, 10, 100, 1000))
+rownames(ts) <- 1:nrow(ts)
+
+# Don't consider ki(t) = 0 for t < ti
+ts <- ts[-which(ts$degree==0),]
+
+# Scaled version of ki(t)
+ts$degree <- ts$degree*sqrt(ts$ti)
+
+# Store them in a list
+degreeOverTime <- list(BA = ts, BA_RA = NULL, BA_NG = NULL)
+```
+
+
+## igraph simulation
+```{r}
+# Read degree distribution files
+degrees <- degree(barabasi.game(n = 11000, m = 10))
+
+# Store them in a list
+degreeDistributions <- list(BA = degrees, BA_RA = NULL, BA_NG = NULL)
+```
+
+## Checking
+```{r}
+# Get the distribution
+degree_spectrum <- table(degrees)
+counts <- unname(degree_spectrum)
+spectrum <- as.numeric(names(degree_spectrum))
+
+# Plot the distribution in log-log scale
+plot(spectrum, counts, log = "xy", ylim = c(1, 10000), col=viridis(length(degrees)))
+
+# Plot degree over time
+ggplot(degreeOverTime$BA, aes(x = t, y = degree)) + 
+  geom_line(aes(color = as.factor(ti)), size = 1) +
+  theme_minimal() + labs(color = "Arrival time") 
+plot(degreeOverTime$BA$t, degreeOverTime$BA$degree, xlim = c(1,10), "line")
+```
+
+
+# Time-series 
+## Functions
+```{r}
+# Function to generate a list of maximum likelihood given a set of sequence statistics
+TSmodel_names <- c('0', '1', '2', '3', '4', '0+', '1+', '2+', '3+', '4+')
+TSnum_params <- c(1, 1, 2, 2, 2, 2, 2, 3, 3, 3)
+TSmodels <- 
+  c(
+    # Model 0
+    as.formula("degree~a*t"),
+
+    # Model 1
+    as.formula("degree~a*t^(1/2)"),
+
+    # Model 2
+    as.formula("degree~a*t^b"),
+
+    # Model 3
+    as.formula("degree~a*exp(c*t)"),
+    
+    # Model 4
+    as.formula("degree~a*log(t+d1)"),
+
+    # Model 0+
+    as.formula("degree~a*t+d"),
+
+    # Model 1+
+    as.formula("degree~at^(1/2)+d"),
+
+    # Model 2+
+    as.formula("degree~a*t^b+d"),
+
+    # Model 3+
+    as.formula("degree~a*exp(c*t)+d"),
+    
+    # Model 4+
+    as.formula("degree~a*log(t+d1)+d2")
+  )
+
+TSstart_parameters_v0 <- function(dat, plus = FALSE) {
+  if(plus == FALSE){
+    linear_model = lm(degree ~ t-1, dat)
+    list(a = coef(linear_model)[1])
+  } else{
+    linear_model = lm(degree ~ t, dat)
+    list(a = coef(linear_model)[2], d = coef(linear_model)[1])
+  }
+}
+
+TSstart_parameters_v1 <- function(dat, plus = FALSE) {
+  if(plus == FALSE){
+    linear_model = lm(degree ~ sqrt(t)-1, dat)
+    list(a = coef(linear_model)[1])
+  } else{
+    linear_model = lm(degree ~ sqrt(t), dat)
+    list(a = coef(linear_model)[2], d = coef(linear_model)[1])
+  }
+}
+
+TSstart_parameters_v2 <- function(dat, plus = FALSE) {
+  if(plus == FALSE){
+    linear_model = lm(log(degree) ~ log(t), dat)
+    a_initial = exp(coef(linear_model)[1])
+    b_initial = coef(linear_model)[2]
+    list(a = a_initial, b = b_initial)
+  } else{
+    linear_model = lm(log(degree) ~ log(t), dat)
+    a_initial = exp(coef(linear_model)[1])
+    b_initial = coef(linear_model)[2]
+    list(a = a_initial, b = b_initial, d = 0)
+  }
+}
+
+TSstart_parameters_v3 <- function(dat, plus = FALSE) {
+  if(plus == FALSE){
+    linear_model = lm(log(degree) ~ t, dat)
+    a_initial = exp(coef(linear_model)[1])
+    c_initial = coef(linear_model)[2]
+    list(a = a_initial, c = c_initial)
+  } else{
+    linear_model = lm(log(degree) ~ t, dat)
+    a_initial = exp(coef(linear_model)[1])
+    c_initial = coef(linear_model)[2]
+    list(a = a_initial, c = c_initial, d = 0)
+  }
+}
+
+TSstart_parameters_v4 <- function(dat, plus = FALSE) {
+  if(plus == FALSE){
+    linear_model = lm(degree ~ log(t)-1, dat)
+    list(a = unname(coef(linear_model)[1]), d1 = 0)
+  } else{
+    linear_model = lm(degree ~ log(t), dat)
+    list(a = unname(coef(linear_model)[2]), d1 = 0, d2 = coef(linear_model)[1])
+  }
+}
+
+TSstart_parameters <- function(dat,i){
+    if (i==1) return(TSstart_parameters_v0(dat))                      # Model 0
+    if (i==2) return(TSstart_parameters_v1(dat))                      # Model 1
+    if (i==3) return(TSstart_parameters_v2(dat))                      # Model 2
+    if (i==4) return(TSstart_parameters_v3(dat))                      # Model 3
+    if (i==5) return(TSstart_parameters_v4(dat))                      # Model 4
+    if (i==6) return(TSstart_parameters_v0(dat, T))                       # Model 0+
+    if (i==7) return(TSstart_parameters_v1(dat, T))                       # Model 1+
+    if (i==8) return(TSstart_parameters_v2(dat, T))                       # Model 2+
+    if(i==9)  return(TSstart_parameters_v3(dat, T))                       # Model 3+
+    if(i==10) return(TSstart_parameters_v4(dat, T))                       # Model 4+
+}
+
+# Calculate optimal parameters nls
+calculate_nls <- function(data) {
+  lapply(1:length(TSmodels), function(i) {
+    print(paste("Computing model", i))
+    if(TSnum_params[i] > 0) {
+          nls(formula = TSmodels[[i]],
+              data = data,
+              start = TSstart_parameters(data,i),
+              control = nls.control(maxiter = 3000, tol = 1e-05, warnOnly=T)
+              #algorithm = "Gauss-Newton",
+              #lower = lower_bounds[[i]](stats),
+              #upper = upper_bounds[[i]](stats)
+          )
+    }
+  })
+}
+
+# Calculate optimal parameters with nlsLM (a different package)
+calculate_nls2 <- function(data) {
+  lapply(1:length(TSmodels), function(i) {
+    print(paste("Computing model", i))
+    if(TSnum_params[i] > 0) {
+          nlsLM(formula = TSmodels[[i]],
+              data = data,
+              start = TSstart_parameters(data,i)
+              #algorithm = "Gauss-Newton",
+              #lower = lower_bounds[[i]](stats),
+              #upper = upper_bounds[[i]](stats)
+          )
+    }
+  })
+}
+
+# Calculating AICs, S values and delta_AIC
+AICs <- list()
+s <- list()
+calculate_stats <- function(nl_models){
+  for (version in names(TS)){
+    m_aic <- c()
+    m_s <- c()
+    for (model in nl_models[[version]]){
+      m_aic <- c(m_aic, AIC(model))
+      m_s <- c(m_s, sqrt(deviance(model)/df.residual(model)))
+    }
+    AICs[[version]] <- m_aic
+    s[[version]] <- m_s
+  }
+  return(list(aic=AICs, s=s))
+}
+```
+
+## Fitting models (NLS)
+```{r}
+# Using original data
+nl_models <- list()
+for (version in names(degreeOverTime)){
+  print(version)
+  if(!is.null(degreeOverTime[[version]])) nl_models[[version]] <- calculate_nls(degreeOverTime[[version]])
+}
+```
+
+## Evaluating
+```{r}
+# Table 2
+stat <- calculate_stats(nl_models)
+
+aic_df <- as.data.frame(do.call(rbind, stat$aic))
+colnames(aic_df) <- TSmodel_names
+
+s_df <- as.data.frame(do.call(rbind, stat$s))
+colnames(s_df) <- TSmodel_names
+
+d_aic_df <- as.data.frame(do.call(rbind, lapply(stat$aic, function(x) sapply(x, function(y) y - min(x)))))
+colnames(d_aic_df) <- TSmodel_names
+
+TSresults <- list(aic=aic_df, s=s_df, delta=d_aic_df)
+
+```
+
+## Retrieving the coefficients of the models
+
+```{r}
+# Table 3
+get_paramsTS <- function(version){
+  do.call(c,lapply(1:length(models), function(x) coefficients(nl_models[[version]][[x]])))
+}
+TS_params <- do.call(rbind, lapply(names(TS), function(x) get_paramsTS(x)))
+rownames(TS_params) <- names(TS)
+```
+
+# Degree distribution functions
+
+## Functions
+```{r}
+DDmodel_names <- c('DisplacedPoisson', 'DisplacedGeometric', 'RestrictedZeta', 'Zeta', 'RightTZeta', 'Altmann')
+DDnum_params <- c(1, 1, 0, 1, 2, 2)
+x <- numeric()
+computeMinusLogLik <- list(
+  
+  DisplacedPoisson = function(lambda) {
+    C <- sum(sapply(x, function(y) sum(log(2:y))))
+    return(-sum(x) * log(lambda) + length(x) * (lambda + log(1 - exp(-lambda))) + C)
+  },
+  
+  DisplacedGeometric = function(q) -(sum(x)-length(x)) * log(1-q) - length(x) * log(q),
+  
+  RestrictedZeta = function() {
+    M <- sum(log(x))
+    return(3 * M + length(x) * log(zeta(3, deriv = 0)))
+  },
+  
+  Zeta = function(gamma) {
+    M <- sum(log(x))
+    return(gamma * M + length(x) * log(zeta(gamma, deriv = 0)))
+  },
+  
+  RightTZeta = function(gamma, kmax) {
+    M <- sum(log(x))
+    return(gamma * M + length(x) * log(sum((1:kmax)^(-gamma))))
+  },
+  
+  Altmann = function(gamma, delta) {
+    cinv <- sum(sapply(1:length(x),function(k) k^(-gamma)*exp(-delta*k)))
+    return(delta * sum(x) + gamma * sum(log(x)) + length(x) * log(cinv))
+  }
+)
+
+computeProbability <- list(
+  DisplacedPoisson   = function(x, lambda) lambda^x*exp(-lambda)/(factorial(x)*(1-exp(-lambda))),
+  DisplacedGeometric = function(x, q) (1-q)^(x-1)*q,
+  RestrictedZeta     = function(x) x^-3/zeta(3, deriv = 0),
+  Zeta               = function(x, gamma) x^(-gamma)/zeta(gamma, deriv = 0),
+  RightTZeta         = function(x, gamma, kmax) x^(-gamma)/sum((1:kmax)^(-gamma)),
+  Altmann            = function(x, gamma, delta) {
+    cinv <- sum(sapply(1:length(x), function(k) k^(-gamma) * exp(-delta*k)))
+    x^(-gamma)*exp(-delta*x)/cinv
+  }
+)
+
+startParameters <- list(
+  startDP = list(lambda = sum(x)/length(x)),
+  startDG = list(q = length(x)/sum(x)),
+  startRZ = NULL,
+  startZ  = list(gamma = 3),
+  startRTZ= list(gamma = 1, kmax = max(x)),
+  startMA  = list(gamma = 1, delta = 0)
+)
+
+bounds <- list(
+  boundsDP = list(lower = 1e-7, upper = NA),
+  boundsDG = list(lower = 1e-7, upper = 1-1e-7),
+  boundsRZ = list(lower = NA, upper = NA),
+  boundsZ  = list(lower = 1+1e-7, upper = NA),
+  boundsRTZ= list(lower = c(1, max(x)), upper = NA),
+  boundsMA = list(lower = c(0,0), upper = NA)
+)
+
+NModels <- length(computeMinusLogLik)
+
+calculateMLE <- function(version){
+  x <<- degreeDistributions[[version]]
+  res <- lapply(1:NModels, function(i) {
+    print(paste("Computing model", names(computeMinusLogLik)[i]))
+    if(DDnum_params[i] > 0) {
+          mle(minuslogl = computeMinusLogLik[[i]],
+              start = startParameters[[i]],
+              method = "L-BFGS-B",
+              lower = bounds[[i]]$lower,
+              upper = bounds[[i]]$upper)
+    } else NULL
+  })#lapply
+  names(res) <- names(computeMinusLogLik)
+  return(res)
+}
+
+# Sample size corrected AIC function
+get_AIC <- function(m2logL,K,N) {
+m2logL + 2*K*N/(N-K-1) 
+}
+
+# Plot fitted vs real
+visualizeDDFit <- function(version){
+  for(i in 1:length(mle_models[[version]])){
+    
+    # Get parameters
+    if(DDnum_params[i] > 0){
+      opt_params <- coef(mle_models[[version]][[i]])
+    } else{
+      opt_params <- NULL
+    }
+    
+    # Get data
+    degrees <- degreeDistributions[[version]]
+    degree_spectrum <- table(degrees)
+    counts <- unname(degree_spectrum)
+    spectrum <- as.numeric(names(degree_spectrum))
+    
+    # Plot
+    plot(spectrum, counts, log = "xy", ylim = c(1, 10000), col=viridis(length(spectrum)))
+    lines(spectrum, 
+          length(x)*sapply(spectrum, function(z) do.call(computeProbability[[i]], as.list(c(x=z, opt_params)))),
+          col = "darkorchid", lwd=3)
+    legend('topright', legend=parse(text=names(mle_models[[version]])[i]), col='darkorchid', lwd=3)
+  }
+}
+```
+
+## Fitting models (MLE)
+
+```{r}
+# Using original data
+mle_models <- list()
+for (version in names(degreeDistributions)){
+  print(version)
+  if(!is.null(degreeDistributions[[version]])) mle_models[[version]] <- calculateMLE(version)
+}
+```
+
+## Visualization
+
+```{r}
+visualizeDDFit("BA")
+```
+
+
+## Evaluating
+```{r}
+computeAICs <- function(models, N){
+  sapply(1:length(models), function(i){
+    if(is.null(models[[i]])){
+      m2LL <- 2*computeMinusLogLik[[i]]
+    } else{
+      m2LL <- attributes(summary(models[[i]]))$m2logL
+    }
+    get_AIC(m2LL, DDnum_params[i], N)
+  })
+}
+
+AICs <- do.call(rbind, lapply(names(degreeDistributions), function(v) computeAICs(mle_models[[v]], length(degreeDistributions[[v]]))))
+
+aic_df <- as.data.frame(do.call(rbind, stat$aic))
+colnames(aic_df) <- DDmodel_names
+
+DDresults <- list(aic=aic_df, delta=d_aic_df)
+```
+
+
+# Introduction
+The goal of this laboratory work is to study the scaling of the mean length parameter in syntatic dependency trees with respect to the number of vertices. To do this, we fit an ensemble of non-linear models to 10 different data sets corresponding to dependency trees for 10 different languages. 
+
+# Results
+
+## Table 1
+```{r, results = "as.is"}
+source("summary_table.R")
+```
+
+## Time series results
+
+```{r}
+
+# Table AIC
+print(kable(round(TSresults$aic, digits = 2), align = "c", caption = paste("AIC results for the time series data")) %>% 
+  kable_styling(latex_options = c("striped", "hold_position")))
+
+# Table S
+print(kable(round(TSresults$s,digits = 5), align = "c", caption = paste("Mean standard error results for the time series data")) %>% 
+  kable_styling(latex_options = c("striped", "hold_position")))
+
+# Table AIC diff
+print(kable(round(TSresults$delta,digits = 2), align = "c", caption = paste("AIC difference results for the time series data")) %>% 
+  kable_styling(latex_options = c("striped", "hold_position")))
+
+```
+
+
+## Degree distribution results
+
+
+# Discussion
+
+# Methods

@@ -3,80 +3,108 @@
 #include <iostream>
 #include <vector>
 #include <set>
+#include <algorithm>
 #include <random>
 
 using namespace std;
 
 default_random_engine generator;
 
-bool debug = false;
+bool debug = true;
 
 struct representation {
     representation(int size) {
-        vertices = multiset<int>();
+        vertices = vector<int>();
         degrees = vector<int>(size);
         n = 0;
     }
 
-    multiset<int> vertices;
+    vector<int> vertices;
     vector<int> degrees;
     int n;
 };
 
-void add_inital(representation& out, int size) {
+void output_vector(vector<int>& to_print, string filename) {
+    ofstream output("out/" + filename + ".txt");
+    bool first = true;
+    for(int val : to_print) {
+        
+        if(!first) {
+            output << " ";
+            if(debug) cout << " ";
+        } else {
+            first = false;
+        }
+
+        output << val;
+        if(debug) cout << val;
+    }
+
+    cout << endl;
+}
+
+void check_consistency(representation& rep) {
+    for(int i = 0; i < (int) rep.degrees.size(); i++) {
+
+        if(rep.n < i) {
+            if(rep.degrees[i] != 0) {
+                cout << "!!!FALSE!!!!" << endl;
+            }
+        }
+
+        int cnt = count(rep.vertices.begin(), rep.vertices.end(), i);
+        if(cnt != rep.degrees[i]) {
+            cout << "!!!FALSE!!!!";
+        }
+    }
+}
+
+void add_inital_complete(representation& out, int size) {
     for(int i = 0; i < size; i++) {
         for(int j = 0; j < size - 1; j++) {
-            out.vertices.insert(i);
+            out.vertices.push_back(i);
         }
 
         out.degrees[i] = size - 1;
     }
 
     out.n = size;
+
+    if(debug) {
+        cout << "Performing initial check" << endl;
+        check_consistency(out);
+    }
 }
 
-void slow_safe_add(representation& out, int n_edges) {
-    vector<pair<int,int> > erased_vertices;
-
-    for(int i = 0; i < n_edges; i++) {
-       
-        uniform_int_distribution<int> distribution(0, out.vertices.size());
-        multiset<int>::iterator it = out.vertices.begin();
-        advance(it, distribution(generator));
-
-        int vertex = *it;
-        int erased = out.vertices.erase(vertex);
-
-        if(debug) cout << "Adding edge to vertex: " << vertex << endl;
-
-        erased_vertices.push_back(pair<int, int> (vertex, erased));
-
-        out.degrees[vertex]++;
-    }
-
-    for(int i = 0; i < erased_vertices.size(); i++) {
-        pair<int,int> to_restore = erased_vertices[i];
-        for(int j = 0; j < to_restore.second + 1; j++) {
-            out.vertices.insert(to_restore.first);
+void add_inital_grid(representation& out, int size) {
+    for(int i = 0; i < size; i++) {
+        for(int j = 0; j < size - 1; j++) {
+            out.vertices.push_back(i);
         }
+
+        out.degrees[i] = size - 1;
     }
 
-    for(int i = 0; i < n_edges; i++) {
-        out.vertices.insert(out.n);
-    }
+    out.n = size;
 
-    out.degrees[out.n] = n_edges;
-    out.n++;
+    if(debug) {
+        cout << "Performing initial check" << endl;
+        check_consistency(out);
+    }
 }
 
-void fast_risky_add(representation& out, int n_edges) {
+void add_inital(representation& out, int size) {
+    add_inital_complete(out, size);
+}
+
+void add_vertex(representation& out, int n_edges) {
     set<int> already_choosen = set<int>();
 
     uniform_int_distribution<int> distribution(0, out.vertices.size());
 
     int i = 0;
     while(i < n_edges) {
-        multiset<int>::iterator it = out.vertices.begin();
+        vector<int>::iterator it = out.vertices.begin();
         advance(it, distribution(generator));
 
         int vertex = *it;
@@ -91,56 +119,45 @@ void fast_risky_add(representation& out, int n_edges) {
         already_choosen.insert(vertex);
 
         out.degrees[vertex]++;
-        out.vertices.insert(vertex);
+        out.vertices.push_back(vertex);
+
+        if(debug) cout << "New vertex degree: " << out.degrees[vertex] << endl; 
             
         i++;
     }
 
-    for(int i = 0; i < n_edges; i++) {
-        out.vertices.insert(out.n);
+    for(int j = 0; j < n_edges; j++) {
+        out.vertices.push_back(out.n);
     }
 
     out.degrees[out.n] = n_edges;
     out.n++;
-}
 
-void add_vertex(representation& out, int n_edges) {
-    fast_risky_add(out, n_edges);
+    if(debug) {
+        cout << "Current vertex vector" << endl;
+        output_vector(out.vertices, "tracked1");
+        check_consistency(out);
+    }
 }
 
 void update_tracked(representation& in, vector<int>& tracking, int n, int t) {
     tracking[t - 1] = in.degrees[n - 1];
 }
 
-void output_vector(vector<int>& to_print, string filename) {
-    ofstream output("out/" + filename + ".txt");
-    bool first = true;
-    for(int val : to_print) {
-        
-        if(!first) {
-            output << " ";
-        } else {
-            first = false;
-        }
-
-        output << val;
-    }
-}
-
 int main() {
 
-    int s0 = 1000;
+    int s0 = 10;
     int m0 = 10;
-    int tm = 10000;
+    int tm = 10;
 
     int max_size = s0 + tm;
 
     representation rep(max_size);
 
-    vector<int> tracked1 = vector<int>(tm);
-    vector<int> tracked10 = vector<int>(tm);
-    vector<int> tracked100 = vector<int>(tm);
-    vector<int> tracked1000 = vector<int>(tm);
+    vector<int> tracked1 = vector<int>(tm, 0);
+    vector<int> tracked10 = vector<int>(tm, 0);
+    vector<int> tracked100 = vector<int>(tm, 0);
+    vector<int> tracked1000 = vector<int>(tm, 0);
 
     add_inital(rep, s0);
 

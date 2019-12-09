@@ -1,6 +1,6 @@
 ---
 title: 'CSN: lab 6'
-author: "Sergio H. Martínez Mateu"
+author: "Sergio H. Martínez Mateu, Martín Dans"
 date: "28/11/2019"
 output: pdf_document
 ---
@@ -20,6 +20,7 @@ library(ggplot2)
 
 # Input
 ```{r}
+# TODO: fails to load 3rd 
 # versions <- c("BA", "BA_RA", "BA_NG")
 # names(versions) <- c("Barabasi-Albert", "Random Attachment", "No growth")
 
@@ -79,36 +80,6 @@ for(v in versions){
   # Store it in list
   degreeOverTime[[v]] <- ts
 }
-```
-
-## Checking
-```{r}
-# Get the distribution
-degree_spectrum <- table(degrees)
-counts <- unname(degree_spectrum)
-spectrum <- as.numeric(names(degree_spectrum))
-
-# Plot the distribution in log-log scale
-plot(spectrum, counts, log = "xy", ylim = c(1, 10000), col=viridis(length(degrees)))
-
-# Plot degree over time
-v <- "BA"
-ggplot(degreeOverTime$BA, aes(x = t, y = degree)) + 
-geom_line(aes(color = as.factor(ti)), size = 1) +
-theme_minimal() + labs(color = "Arrival time") + 
-stat_function(fun=function(x) m0[v] * sqrt(x), geom="line")
-
-v <- "BA_RA"
-ggplot(degreeOverTime$BA_RA, aes(x = t, y = degree)) + 
-geom_line(aes(color = as.factor(ti)), size = 1) +
-theme_minimal() + labs(color = "Arrival time") + 
-stat_function(fun=function(x) m0[v]*log(n0[v]+x-1), geom="line")
-
-# v <- "BA_NG"
-# ggplot(degreeOverTime$BA_NG, aes(x = t, y = degree)) + 
-# geom_line(aes(color = as.factor(ti)), size = 1) +
-# theme_minimal() + labs(color = "Arrival time")
-  
 ```
 
 
@@ -291,9 +262,8 @@ solve1Version <- function(version){
 ```
 
 ## Fitting models (NLS)
-```{r echo=FALSE}
+```{r message=FALSE, warning=FALSE, include=FALSE}
 nls_results <- lapply(versions, solve1Version)
-# nls_results <- lapply("BA", solve1Version)
 ```
 
 ### Calculating AICs
@@ -320,21 +290,28 @@ table2Dif[,TSmodel_names] <- table2Dif[,TSmodel_names]-apply(table2Dif[,TSmodel_
 ### Plotting 
 
 ```{r}
-theoreticalCurves <- list(
-  BA = function(x) m0*sqrt(x),
-  BA_RA = function(x) m0*log(m0+x-1),
-  BA_NG = function(x) 2*m0*x/n0
-)
+
 
 # Evolution plots + theoretical curve
 plotEvolutions <- function(version){
+  
+  # todo, pass corerctly the parameters to the functions m0[v] and n0[v]
+  m <- m0[version]
+  n <- m0[version]
+  
+  theoreticalCurves <- list(
+    BA = function(x)m * sqrt(x),
+    BA_RA = function(x) m*log(m+x-1),
+    BA_NG = function(x) 2*m*x/n
+  )
+  
   ggplot(degreeOverTime[[version]], aes(x = t, y = degree)) + 
-    geom_line(aes(color = as.factor(ti)), size = 1) +
-    theme_minimal() +
-    stat_function(fun = theoreticalCurves[[version]], mapping = aes(color = "Theoretical")) +
-    labs(color = NULL, y = "Scaled degree", x = "Time step") +
-    scale_color_manual(values = c(2,3,4,5,1),
-    labels=c(paste("AT", arrivalTimes), "Theoretical curve"))
+  geom_line(aes(color = as.factor(ti)), size = 1) +
+  theme_minimal() + labs(color = "Arrival time") + 
+  labs(color = NULL, y = "Scaled degree", x = "Time step") +
+  stat_function(fun=function(x) theoreticalCurves[[version]], geom="line", mapping = aes(color = "Theoretical")) +
+  scale_color_manual(values = c(2,3,4,5,1),
+  labels=c(paste("AT", arrivalTimes), "Theoretical curve"))
 }
 ```
 
@@ -342,8 +319,8 @@ plotEvolutions <- function(version){
 
 ```{r}
 # Table 3
+# TODO: error getting the coefficients, should be something like: coefficients(nls_results[["Barabasi-Albert"]][[1]][[1]])
 get_paramsTS <- function(version){
-  print(version)
   do.call(c,lapply(1:length(TSmodels), function(x) coefficients(nls_results[[version]][[x]])))
 }
 TS_params <- do.call(rbind, lapply(names(versions), function(x) get_paramsTS(x)))
@@ -400,11 +377,11 @@ computeProbability <- list(
 )
 
 startParameters <- list(
-  startDP = list(lambda = sum(x)/length(x)),
-  startDG = list(q = length(x)/sum(x)),
+  startDP = list(lambda = 1),
+  startDG = list(q = 1),
   startRZ = NULL,
   startZ  = list(gamma = 3),
-  startRTZ= list(gamma = 1, kmax = max(x)),
+  startRTZ= list(gamma = 0.05, kmax = max(x)),
   startMA  = list(gamma = 1, delta = 0)
 )
 

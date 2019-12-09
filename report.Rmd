@@ -20,10 +20,14 @@ library(ggplot2)
 
 # Input
 ```{r}
-versions <- c("BA", "BA_RA", "BA_NG")
-names(versions) <- c("Barabasi-Albert", "Random Attachment", "No Growth")
-m0 <- c(10, 10 , 10)
-n0 <- c(10, 10, 10)
+# versions <- c("BA", "BA_RA", "BA_NG")
+# names(versions) <- c("Barabasi-Albert", "Random Attachment", "No growth")
+
+versions <- c("BA", "BA_RA")
+names(versions) <- c("Barabasi-Albert", "Random Attachment")
+
+m0 <- c(10, 10 , 10000)
+n0 <- c(10, 100, 10)
 tmax <- 10000
 arrivalTimes <- c(1, 10, 100, 1000)
 names(m0) <- names(n0) <- versions
@@ -36,21 +40,12 @@ degreeDistributions <- vector(mode = "list", length = length(versions))
 names(degreeDistributions) <- versions
 for(v in versions){
   # Read degree distribution files
-  degrees <- fread("out/degreees.txt", data.table = F)
+  degrees <- fread(paste0("out/",v,"/degreees.txt"), data.table = F)
   degrees <- unname(t(degrees)[,1])
   
-  # Store them in list
+  # Store them in list    
   degreeDistributions[[v]] <- degrees
 }
-```
-
-```{r}
-# Read degree distribution files
-degrees <- fread("out/degreees.txt", data.table = F)
-degrees <- unname(t(degrees)[,1])
-
-# Store them in list
-degreeDistributions <- list(BA = degrees, BA_RA = NULL, BA_NG = NULL)
 ```
 
 ## Degree evolution
@@ -65,7 +60,7 @@ for(v in versions){
   # Read time series files
   timeseries <- data.frame(matrix(NA, nrow = 4, ncol = tmax, dimnames = list(x = paste0("AT", arrivalTimes), y = 1:tmax)))
   for(i in 1:length(ts.files)){
-    dot <- fread(paste0("out/",ts.files[i]), data.table = F)
+    dot <- fread(paste0("out/", v, '/', ts.files[i]), data.table = F)
     dot <- unname(t(dot)[,1])
     timeseries[i,] <- dot
   }
@@ -75,53 +70,15 @@ for(v in versions){
   rownames(ts) <- 1:nrow(ts)
   
   # Don't consider ki(t) = 0 for t < ti
-  ts <- ts[-which(ts$degree==0),]
+  ts <- ts[-which(ts$degree == 0 ),]
   
   # Scaled version of ki(t)
-  if(version == "BA") ts$degree <- ts$degree*sqrt(ts$ti)
-  if(version == "BA_RA") ts$degree <- ts$degree + m0[v]*log(n0[v]+ts$ti-1)-m0[v]
-  
+  if(v == "BA") ts$degree <- ts$degree*sqrt(ts$ti)
+  if(v == "BA_RA") ts$degree <- ts$degree + m0[v]*log(n0[v]+ts$ti-1)-m0[v]
+
   # Store it in list
   degreeOverTime[[v]] <- ts
 }
-```
-
-```{r}
-# List files
-files <- list.files("out")
-ts.files <- files[grep("tracked", files)]
-
-# Read time series files
-timeseries <- data.frame(matrix(NA, nrow = 4, ncol = 10000, dimnames = list(x = c("AT1", "AT10", "AT100", "AT1000"), y = 1:10000)))
-for(i in 1:length(ts.files)){
-  dot <- fread(paste0("out/",ts.files[i]), data.table = F)
-  dot <- unname(t(dot)[,1])
-  timeseries[i,] <- dot
-}
-
-ts <- reshape(data = timeseries, varying = names(timeseries), v.names = "degree", timevar = "t", sep = "", direction = "long", idvar = "ti", ids = c(1, 10, 100, 1000))
-rownames(ts) <- 1:nrow(ts)
-
-# Don't consider ki(t) = 0 for t < ti
-ts <- ts[-which(ts$degree==0),]
-
-# Scaled version of ki(t)
-if(version == "BA") ts$degree <- ts$degree*sqrt(ts$ti)
-if(version == "BA_RA") ts$degree <- ts$degree + m0*log(n0+ts$ti-1)-m0
-
-# Store them in a list
-degreeOverTime <- list(BA = ts, BA_RA = NULL, BA_NG = NULL)
-```
-
-
-
-## igraph simulation
-```{r}
-# Read degree distribution files
-degrees <- degree(barabasi.game(n = 11000, m = 10))
-
-# Store them in a list
-degreeDistributions <- list(BA = degrees, BA_RA = NULL, BA_NG = NULL)
 ```
 
 ## Checking
@@ -135,9 +92,23 @@ spectrum <- as.numeric(names(degree_spectrum))
 plot(spectrum, counts, log = "xy", ylim = c(1, 10000), col=viridis(length(degrees)))
 
 # Plot degree over time
+v <- "BA"
 ggplot(degreeOverTime$BA, aes(x = t, y = degree)) + 
 geom_line(aes(color = as.factor(ti)), size = 1) +
-theme_minimal() + labs(color = "Arrival time") 
+theme_minimal() + labs(color = "Arrival time") + 
+stat_function(fun=function(x) m0[v] * sqrt(x), geom="line")
+
+v <- "BA_RA"
+ggplot(degreeOverTime$BA_RA, aes(x = t, y = degree)) + 
+geom_line(aes(color = as.factor(ti)), size = 1) +
+theme_minimal() + labs(color = "Arrival time") + 
+stat_function(fun=function(x) m0[v]*log(n0[v]+x-1), geom="line")
+
+# v <- "BA_NG"
+# ggplot(degreeOverTime$BA_NG, aes(x = t, y = degree)) + 
+# geom_line(aes(color = as.factor(ti)), size = 1) +
+# theme_minimal() + labs(color = "Arrival time")
+  
 ```
 
 
@@ -257,7 +228,7 @@ TSstart_parameters_v4 <- function(dat, plus = FALSE) {
     linear_model = lm(degree ~ log(t), dat)
     a_initial <- unname(coef(linear_model)[2])
     d2_initial <- coef(linear_model)[1]
-    if(abs(a_initial) < 1e-3) a_initial <- a_initial + sign(a_initial)*0.05
+    if(abs(a_initial) < 1e-3) a_initial <- a_initial + sign(a_initial)*0.5
     list(a = a_initial, d1 = 0, d2 = d2_initial)
   }
 }
@@ -301,21 +272,28 @@ solveAllModels2 <- function(data) {
   lapply(1:length(TSmodels), function(i) {
     print(paste("Computing model", i))
     if(TSnum_params[i] > 0) {
-          nlsLM(formula = TSmodels[[i]],
+      try(nlsLM(formula = TSmodels[[i]],
               data = data,
               start = TSstart_parameters(data,i)
               #algorithm = "Gauss-Newton",
               #lower = lower_bounds[[i]](stats),
               #upper = upper_bounds[[i]](stats)
-          )
+          ))
+          
     }
   })
 }
 
 # Solve for all chosen vertices
 solve1Version <- function(version){
-  lapply(arrivalTimes, function(x) solveAllModels(degreeOverTime$BA[degreeOverTime[[version]]$ti==x,]))
+  lapply(arrivalTimes, function(x) solveAllModels2(degreeOverTime[[version]][degreeOverTime[[version]]$ti==x,]))
 }
+```
+
+## Fitting models (NLS)
+```{r echo=FALSE}
+nls_results <- lapply(versions, solve1Version)
+# nls_results <- lapply("BA", solve1Version)
 ```
 
 ### Calculating AICs
@@ -334,7 +312,7 @@ for(v in 1:length(versions)){
   }
 }
 
-# AIC difference
+# AIC difference  
 table2Dif <- table2
 table2Dif[,TSmodel_names] <- table2Dif[,TSmodel_names]-apply(table2Dif[,TSmodel_names], 1, min)
 ```
@@ -360,31 +338,16 @@ plotEvolutions <- function(version){
 }
 ```
 
-
-## Fitting models (NLS)
-```{r}
-nls_results <- lapply(versions, solve1Version)
-nls_results <- lapply("BA", solve1Version)
-```
-
-## Evaluating
-```{r}
-# Table 2
-TSresults <- vector("list", length(arrivalTimes))
-for(i in 1:length(arrivalTimes)){
-  TSresults[[i]] <- computeTable2(nls_results[[i]])
-}
-```
-
 ## Retrieving the coefficients of the models
 
 ```{r}
 # Table 3
 get_paramsTS <- function(version){
-  do.call(c,lapply(1:length(models), function(x) coefficients(nl_models[[version]][[x]])))
+  print(version)
+  do.call(c,lapply(1:length(TSmodels), function(x) coefficients(nls_results[[version]][[x]])))
 }
-TS_params <- do.call(rbind, lapply(names(TS), function(x) get_paramsTS(x)))
-rownames(TS_params) <- names(TS)
+TS_params <- do.call(rbind, lapply(names(versions), function(x) get_paramsTS(x)))
+rownames(TS_params) <- names(ts)
 ```
 
 # Degree distribution functions

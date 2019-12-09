@@ -8,24 +8,29 @@
 
 using namespace std;
 
-default_random_engine generator;
+random_device rd;
+mt19937 generator(rd());
 
-bool debug = true;
+bool debug = false;
+
+string alg;
 
 struct representation {
     representation(int size) {
         vertices = vector<int>();
         degrees = vector<int>(size);
+        edges = vector<vector<bool> >(size, vector<bool>(size, false));
         n = 0;
     }
 
     vector<int> vertices;
     vector<int> degrees;
+    vector< vector<bool> > edges;
     int n;
 };
 
 void output_vector(vector<int>& to_print, string filename) {
-    ofstream output("out/" + filename + ".txt");
+    ofstream output("out/" + alg + "/" + filename + ".txt");
     bool first = true;
     for(int val : to_print) {
         
@@ -40,7 +45,35 @@ void output_vector(vector<int>& to_print, string filename) {
         if(debug) cout << val;
     }
 
-    cout << endl;
+    if(debug) cout << endl;
+}
+
+void add_edge(representation& out, int a, int b) {
+
+    if(out.edges[a][b]) {
+        cout << "ERROR!!! Edge already exists." << endl;
+    }
+    out.vertices.push_back(a);
+    out.vertices.push_back(b);
+
+    out.degrees[a]++;
+    out.degrees[b]++;
+
+    out.edges[a][b] = true;
+    out.edges[b][a] = true;
+}
+
+int insert_new_vertex(representation& out) {
+    out.n++;
+    return out.n - 1;
+}
+
+void insert_n_vertex(representation& out, int n) {
+    out.n += n;
+}
+
+bool exists_edge(representation& out, int a, int b) {
+    return out.edges[a][b];
 }
 
 void check_consistency(representation& rep) {
@@ -60,15 +93,14 @@ void check_consistency(representation& rep) {
 }
 
 void add_inital_complete(representation& out, int size) {
+
+    insert_n_vertex(out, size);
+
     for(int i = 0; i < size; i++) {
-        for(int j = 0; j < size - 1; j++) {
-            out.vertices.push_back(i);
+        for(int j = i + 1; j < size; j++) {
+            add_edge(out, i, j);
         }
-
-        out.degrees[i] = size - 1;
     }
-
-    out.n = size;
 
     if(debug) {
         cout << "Performing initial check" << endl;
@@ -77,15 +109,12 @@ void add_inital_complete(representation& out, int size) {
 }
 
 void add_inital_grid(representation& out, int size) {
+    
+    insert_n_vertex(out, size);
+
     for(int i = 0; i < size; i++) {
-        for(int j = 0; j < size - 1; j++) {
-            out.vertices.push_back(i);
-        }
-
-        out.degrees[i] = size - 1;
+        add_edge(out, i, (i + 1) % size);
     }
-
-    out.n = size;
 
     if(debug) {
         cout << "Performing initial check" << endl;
@@ -94,49 +123,69 @@ void add_inital_grid(representation& out, int size) {
 }
 
 void add_inital(representation& out, int size) {
-    add_inital_complete(out, size);
+    add_inital_grid(out, size);
 }
 
 void add_vertex(representation& out, int n_edges) {
-    set<int> already_choosen = set<int>();
+    uniform_int_distribution<int> distribution;
+    if(alg == "BA_RA") distribution = uniform_int_distribution<int>(0, out.n);
+    else distribution = uniform_int_distribution<int>(0, out.vertices.size() + 1);
 
-    uniform_int_distribution<int> distribution(0, out.vertices.size());
+    int new_vertex = insert_new_vertex(out);
 
     int i = 0;
     while(i < n_edges) {
-        vector<int>::iterator it = out.vertices.begin();
-        advance(it, distribution(generator));
 
-        int vertex = *it;
+        int vertex;
+        if(alg == "BA_RA") vertex = distribution(generator);
+        else vertex = out.vertices[distribution(generator)];
         
-        if(already_choosen.count(vertex) == 1) {
-            continue;
-        }
+        if(exists_edge(out, vertex, new_vertex)) continue;
 
         if(debug) cout << "Adding edge to vertex: " << vertex << endl;
 
-
-        already_choosen.insert(vertex);
-
-        out.degrees[vertex]++;
-        out.vertices.push_back(vertex);
+        add_edge(out, vertex, new_vertex);
 
         if(debug) cout << "New vertex degree: " << out.degrees[vertex] << endl; 
             
         i++;
     }
 
-    for(int j = 0; j < n_edges; j++) {
-        out.vertices.push_back(out.n);
-    }
-
-    out.degrees[out.n] = n_edges;
-    out.n++;
-
     if(debug) {
         cout << "Current vertex vector" << endl;
-        output_vector(out.vertices, "tracked1");
+        output_vector(out.vertices, alg + "tracked1");
         check_consistency(out);
+    }
+}
+
+void add_random_edges(representation& out, int n_edges) {
+
+    // select first vertex
+    uniform_int_distribution<int> distribution(0, out.n);
+
+    bool found = false;
+    int vertex;
+    while(!found) {
+        vertex = distribution(generator);
+        if(out.n - out.degrees[vertex] > n_edges) {
+            found = true;
+        }
+    }
+
+    // add edges to selected vertex
+    int i = 0;
+    while(i < n_edges) {
+        int vertex_2 = distribution(generator);
+
+        if(exists_edge(out, vertex, vertex_2)) continue;
+       
+        if(debug) cout << "Adding edge to vertex: " << vertex << endl;
+
+        add_edge(out, vertex, vertex_2);
+
+        if(debug) cout << "New vertexs degrees: " << out.degrees[vertex] << " " << out.degrees[vertex_2] << endl; 
+            
+        i++;
     }
 }
 
@@ -144,11 +193,17 @@ void update_tracked(representation& in, vector<int>& tracking, int n, int t) {
     tracking[t - 1] = in.degrees[n - 1];
 }
 
-int main() {
+int main(int argc, char* argv[]) {
 
-    int s0 = 10;
-    int m0 = 10;
-    int tm = 10;
+    alg = argc > 1 ? (string) argv[1] : "BA";
+    int s0 = argc > 2 ? stoi(argv[2]) : 20;
+    int m0 = argc > 3 ? stoi(argv[3]) : 10;
+    int tm = argc > 4 ? stoi(argv[4]) : 100000;
+
+    if(argc > 5) {
+        string debug_arg = argv[5]; 
+        debug = (debug_arg == "T" || debug_arg == "true");
+    }
 
     int max_size = s0 + tm;
 
@@ -165,13 +220,31 @@ int main() {
 
     // add one vertex each t
     for(int t = 1; t <= tm; t++) {
-        cout << "Add t: " << t << endl;
-        add_vertex(rep, m0);
 
-        update_tracked(rep, tracked1, s0 + 1, t);
-        update_tracked(rep, tracked10, s0 + 10, t);
-        update_tracked(rep, tracked100, s0 + 100, t);
-        update_tracked(rep, tracked1000, s0 + 1000, t);
+        cout << "Time: " << t << endl;
+
+        if(alg == "BA" || alg == "BA_RA") {
+            add_vertex(rep, m0);
+
+            update_tracked(rep, tracked1, s0 + 1, t);
+            update_tracked(rep, tracked10, s0 + 10, t);
+            update_tracked(rep, tracked100, s0 + 100, t);
+            update_tracked(rep, tracked1000, s0 + 1000, t);
+        }
+        else if(alg == "BA_NG") {
+            add_random_edges(rep, m0);
+
+            update_tracked(rep, tracked1, 1, t);
+            update_tracked(rep, tracked10, 10, t);
+            update_tracked(rep, tracked100, 100, t);
+            update_tracked(rep, tracked1000, 1000, t);
+        }
+        else {
+            cout << "Invalid algorithm selected" << endl;
+            return 1;
+        }
+
+        
 
     }
 

@@ -244,8 +244,6 @@ int main(int argc, char* argv[]) {
             return 1;
         }
 
-        
-
     }
 
     output_vector(rep.degrees, "degreees");

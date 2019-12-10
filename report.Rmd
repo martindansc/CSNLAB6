@@ -517,11 +517,6 @@ plotEvolutions("BA_NG")
 ```
 
 ```{r}
-# Table AIC
-# print(kable(table2, align = "c", caption = paste("AIC results for the time series data")) %>% 
-#   kable_styling(latex_options = c("striped", "hold_position")))
-
-# Table AIC diff
 table2Dif[,3:ncol(table2Dif)] <- round(table2Dif[,3:ncol(table2Dif)], 1)
 
 print(kable(table2Dif, align = "c", caption = paste("AIC difference results for the time series data")) %>% 

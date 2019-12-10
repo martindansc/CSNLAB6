@@ -533,7 +533,7 @@ DDresults <- list(aic=as.data.frame(AICs), delta=as.data.frame(dAICs))
 
 
 # Introduction
-The goal of this laboratory work is to study ...
+The goal of this laboratory work is to study some of the properties of dynamic networks. We will be looking at two main aspects, the evolution of the degrees over time and the final degree distribution. Three different versions dynamic network generating models are considered: the Barabasi-Albert, a variant where preferential attachment is substituted by random attachment and a third variant where there preferential attachment but no vertex growth.
 
 # Results
 

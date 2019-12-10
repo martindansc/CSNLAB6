@@ -1,7 +1,7 @@
 ---
 title: 'CSN: lab 6'
 author: "Sergio H. Martínez Mateu, Martín Dans"
-date: "28/11/2019"
+date: "11/12/2019"
 output: pdf_document
 ---
 
@@ -518,8 +518,8 @@ The goal of this laboratory work is to study some of the properties of dynamic n
 # Results
 
 In the following table, we show the parameters that we used in our simulations of network generating models. m0 is the number of edges added at each time, n0 the number of initial vertices and the initial configuration means the type of graph that is used for the initial vertices. 
-```{r}
-kable(data.frame(Version = names(versions), m0 = m0, n0 = n0, Initial_Conf = c("Ring", "Ring", "Ring")), row.names = F, align = "c", caption = paste("Initial settings for the simulation algorithm")) 
+```{r, results="asis"}
+print(kable(data.frame(Version = names(versions), m0 = m0, n0 = n0, Initial_Conf = c("Ring", "Ring", "Ring")), row.names = F, align = "c", caption = paste("Initial settings for the simulation algorithm"))  %>% kable_styling(latex_options = c("striped", "hold_position")))
 ```
 
 ## Degree evolution

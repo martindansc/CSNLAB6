@@ -488,7 +488,7 @@ computeAICs <- function(models, N){
 }
 ```
 
-```{r}
+```{r include=FALSE}
 mle_models <- list()
 for (version in names(degreeDistributions)){
   print(version)
@@ -536,20 +536,26 @@ From the previous plots we conclude that our simulations worked well since the e
 
 Next we show the results of the model selection process based on the AIC of the fitted models. At the beggining we were not sure if we had to fit the evolution model for the chosen vertices individually or all at once. For this reason, we did both versions of the analysis.  
 
-```{r results = “as.is”}
+```{r, results = "asis"}
 table2Dif[,3:ncol(table2Dif)] <- round(table2Dif[,3:ncol(table2Dif)], 1)
 
-print(kable(table2Dif, align = "c", caption = paste("AIC difference results for the time series models fitting the models separately for each chosen vertex")) %>% 
+# print(kable(table2Dif, align = "c", caption = paste("AIC difference results for the time series models fitting the models separately for each chosen vertex")) %>% 
+#   kable_styling(latex_options = c("striped", "hold_position")))
+
+# print(kable(table2DifAll, align = "c", caption = paste("AIC difference results for the time series models fitting the models separately for each chosen vertex")) %>% 
+#   kable_styling(latex_options = c("striped", "hold_position")))
+
+print(kable(table2Dif[,1:7], align = "c", caption = paste("AIC difference results for the time series data")) %>%
   kable_styling(latex_options = c("striped", "hold_position")))
 
-print(kable(table2DifAll, align = "c", caption = paste("AIC difference results for the time series models fitting the models separately for each chosen vertex")) %>% 
+print(kable(table2Dif[,c(1:2,8:ncol(table2Dif))], align = "c", caption = paste("AIC difference results for the time series data")) %>%
   kable_styling(latex_options = c("striped", "hold_position")))
 
-# print(kable(table2Dif[,1:7], align = "c", caption = paste("AIC difference results for the time series data")) %>% 
-#   kable_styling(latex_options = c("striped", "hold_position")))
-# 
-# print(kable(table2Dif[,c(1:2,8:ncol(table2Dif))], align = "c", caption = paste("AIC difference results for the time series data")) %>% 
-#   kable_styling(latex_options = c("striped", "hold_position")))
+print(kable(table2DifAll[,1:5], align = "c", caption = paste("AIC difference results for the time series data")) %>%
+  kable_styling(latex_options = c("striped", "hold_position")))
+
+print(kable(table2DifAll[,6:ncol(table2DifAll)], align = "c", caption = paste("AIC difference results for the time series data")) %>%
+  kable_styling(latex_options = c("striped", "hold_position")))
 
 ```
 
@@ -566,9 +572,12 @@ Indeed, the fitted curve describes the mean behaviour of the data. On the other 
 ## Degree distribution
 
 Here we show the AIC differences for the fitted degree distribution models.
-```{r results = “as.is”}
+```{r, results = "asis"}
 # Table AIC diff
-print(kable(round(DDresults$delta,digits = 2), align = "c", caption = paste("AIC difference results for the degree distribution data")) %>% 
+print(kable(round(DDresults$delta[,1:4],digits = 2), align = "c", caption = paste("AIC difference results for the degree distribution data")) %>% 
+  kable_styling(latex_options = c("striped", "hold_position")))
+
+print(kable(round(DDresults$delta[,5:ncol(DDresults$delta)],digits = 2), align = "c", caption = paste("AIC difference results for the degree distribution data")) %>% 
   kable_styling(latex_options = c("striped", "hold_position")))
 ```
 

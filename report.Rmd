@@ -20,15 +20,14 @@ library(ggplot2)
 
 # Input
 ```{r}
-# TODO: fails to load 3rd 
 # versions <- c("BA", "BA_RA", "BA_NG")
 # names(versions) <- c("Barabasi-Albert", "Random Attachment", "No growth")
 
-versions <- c("BA", "BA_RA")
-names(versions) <- c("Barabasi-Albert", "Random Attachment")
+versions <- c("BA", "BA_RA", "BA_NG")
+names(versions) <- c("Barabasi-Albert", "Random Attachment", "No Growth")
 
-m0 <- c(10, 10 , 10000)
-n0 <- c(10, 100, 10)
+m0 <- c(10, 10 , 10)
+n0 <- c(10, 100, 10000)
 tmax <- 10000
 arrivalTimes <- c(1, 10, 100, 1000)
 names(m0) <- names(n0) <- versions
@@ -45,7 +44,7 @@ for(v in versions){
   degrees <- unname(t(degrees)[,1])
   
   # Store them in list    
-  degreeDistributions[[v]] <- degrees
+  degreeDistributions[[v]] <- degrees[1:tmax]
 }
 ```
 
@@ -55,7 +54,7 @@ degreeOverTime <- vector(mode = "list", length = length(versions))
 names(degreeOverTime) <- versions
 for(v in versions){
   # List files
-  files <- list.files("out")
+  files <- list.files(paste0("out/", v))
   ts.files <- files[grep("tracked", files)]
   
   # Read time series files
@@ -71,7 +70,7 @@ for(v in versions){
   rownames(ts) <- 1:nrow(ts)
   
   # Don't consider ki(t) = 0 for t < ti
-  ts <- ts[-which(ts$degree == 0 ),]
+  if(sum(ts$degree==0)>0) ts <- ts[-which(ts$degree == 0 ),]
   
   # Scaled version of ki(t)
   if(v == "BA") ts$degree <- ts$degree*sqrt(ts$ti)
@@ -264,6 +263,7 @@ solve1Version <- function(version){
 ## Fitting models (NLS)
 ```{r message=FALSE, warning=FALSE, include=FALSE}
 nls_results <- lapply(versions, solve1Version)
+names(nls_results) <- versions
 ```
 
 ### Calculating AICs
@@ -290,14 +290,11 @@ table2Dif[,TSmodel_names] <- table2Dif[,TSmodel_names]-apply(table2Dif[,TSmodel_
 ### Plotting 
 
 ```{r}
-
-
 # Evolution plots + theoretical curve
 plotEvolutions <- function(version){
-  
-  # todo, pass corerctly the parameters to the functions m0[v] and n0[v]
+
   m <- m0[version]
-  n <- m0[version]
+  n <- n0[version]
   
   theoreticalCurves <- list(
     BA = function(x)m * sqrt(x),
@@ -309,7 +306,7 @@ plotEvolutions <- function(version){
   geom_line(aes(color = as.factor(ti)), size = 1) +
   theme_minimal() + labs(color = "Arrival time") + 
   labs(color = NULL, y = "Scaled degree", x = "Time step") +
-  stat_function(fun=function(x) theoreticalCurves[[version]], geom="line", mapping = aes(color = "Theoretical")) +
+  stat_function(fun=theoreticalCurves[[version]], geom="line", mapping = aes(color = "Theoretical")) +
   scale_color_manual(values = c(2,3,4,5,1),
   labels=c(paste("AT", arrivalTimes), "Theoretical curve"))
 }
@@ -320,11 +317,11 @@ plotEvolutions <- function(version){
 ```{r}
 # Table 3
 # TODO: error getting the coefficients, should be something like: coefficients(nls_results[["Barabasi-Albert"]][[1]][[1]])
-get_paramsTS <- function(version){
-  do.call(c,lapply(1:length(TSmodels), function(x) coefficients(nls_results[[version]][[x]])))
-}
-TS_params <- do.call(rbind, lapply(names(versions), function(x) get_paramsTS(x)))
-rownames(TS_params) <- names(ts)
+# get_paramsTS <- function(version){
+#   do.call(c,lapply(1:length(TSmodels), function(x) coefficients(nls_results[[version]][[x]])))
+# }
+# TS_params <- do.call(rbind, lapply(names(versions), function(x) get_paramsTS(x)))
+# rownames(TS_params) <- names(ts)
 ```
 
 # Degree distribution functions
@@ -478,7 +475,7 @@ DDresults <- list(aic=aic_df, delta=d_aic_df)
 
 
 # Introduction
-The goal of this laboratory work is to study the scaling of the mean length parameter in syntatic dependency trees with respect to the number of vertices. To do this, we fit an ensemble of non-linear models to 10 different data sets corresponding to dependency trees for 10 different languages. 
+The goal of this laboratory work is to study ...
 
 # Results
 
@@ -494,23 +491,29 @@ The first thing that we want to check is that the evolution of the degrees over 
 
 ```{r}
 plotEvolutions("BA")
+plotEvolutions("BA_RA")
+plotEvolutions("BA_NG")
 ```
 
 ```{r}
-
 # Table AIC
-print(kable(round(TSresults$aic, digits = 2), align = "c", caption = paste("AIC results for the time series data")) %>% 
-  kable_styling(latex_options = c("striped", "hold_position")))
-
-# Table S
-print(kable(round(TSresults$s,digits = 5), align = "c", caption = paste("Mean standard error results for the time series data")) %>% 
-  kable_styling(latex_options = c("striped", "hold_position")))
+# print(kable(table2, align = "c", caption = paste("AIC results for the time series data")) %>% 
+#   kable_styling(latex_options = c("striped", "hold_position")))
 
 # Table AIC diff
-print(kable(round(TSresults$delta,digits = 2), align = "c", caption = paste("AIC difference results for the time series data")) %>% 
+table2Dif[,3:ncol(table2Dif)] <- round(table2Dif[,3:ncol(table2Dif)], 1)
+
+print(kable(table2Dif, align = "c", caption = paste("AIC difference results for the time series data")) %>% 
   kable_styling(latex_options = c("striped", "hold_position")))
 
+# print(kable(table2Dif[,1:7], align = "c", caption = paste("AIC difference results for the time series data")) %>% 
+#   kable_styling(latex_options = c("striped", "hold_position")))
+# 
+# print(kable(table2Dif[,c(1:2,8:ncol(table2Dif))], align = "c", caption = paste("AIC difference results for the time series data")) %>% 
+#   kable_styling(latex_options = c("striped", "hold_position")))
+
 ```
+
 
 
 ## Degree distribution
@@ -518,11 +521,12 @@ print(kable(round(TSresults$delta,digits = 2), align = "c", caption = paste("AIC
 Plots
 ```{r}
 visualizeDDFit("BA")
+visualizeDDFit("BA_RA")
+visualizeDDFit("BA_NG")
 ```
 
 AIC tables
 ```{r}
-
 # Table AIC
 print(kable(round(DDresults$aic, digits = 2), align = "c", caption = paste("AIC results for the degree distribution data")) %>% 
   kable_styling(latex_options = c("striped", "hold_position")))
@@ -537,3 +541,5 @@ print(kable(round(DDresults$delta,digits = 2), align = "c", caption = paste("AIC
 # Discussion
 
 # Methods
+
+

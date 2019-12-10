@@ -24,7 +24,7 @@ versions <- c("BA", "BA_RA", "BA_NG")
 names(versions) <- c("Barabasi-Albert", "Random Attachment", "No Growth")
 
 m0 <- c(10, 10 , 10)
-n0 <- c(10, 100, 10000)
+n0 <- c(10, 100, 1000)
 tmax <- 10000
 arrivalTimes <- c(1, 10, 100, 1000)
 names(m0) <- names(n0) <- versions
@@ -557,6 +557,5 @@ In order to do the simulation we developed a in c++ a small program that impleme
 
 For creating the inital graph we tested with two different types of graph: Complete graph and a ring graph achetypes. We realised that using already a medium sized complete graph, the degrees where distorsioned a lot, since the subgraph was absorving almost all the edges. Because that, we tried starting with a ring graph obtaining much better results for the simulations. We used also that graph for initialzing the "No growth" simulation.
 
-
-
+When making the plots we realised that they have some variance due to the randomness, we would have liked to compute an average of progression of the vertices in order to have much better fits to the theoretical one, but we run out of time.
 

@@ -328,8 +328,8 @@ plotEvolutions <- function(version){
 
 ## Functions
 ```{r}
-DDmodel_names <- c('DisplacedPoisson', 'DisplacedGeometric', 'RestrictedZeta', 'Zeta', 'RightTZeta', 'Altmann')
-DDnum_params <- c(1, 1, 0, 1, 2, 2)
+DDmodel_names <- c('DisplacedPoisson', 'DisplacedGeometric', 'RestrictedZeta', 'Zeta', 'RightTZeta', 'Altmann', 'RightTExponential')
+DDnum_params <- c(1, 1, 0, 1, 2, 2, 1)
 x <- numeric()
 computeMinusLogLik <- list(
   
@@ -358,6 +358,11 @@ computeMinusLogLik <- list(
   Altmann = function(gamma, delta) {
     cinv <- sum(sapply(1:length(x),function(k) k^(-gamma)*exp(-delta*k)))
     return(delta * sum(x) + gamma * sum(log(x)) + length(x) * log(cinv))
+  },
+  
+  RightTExponential = function(c){
+    C <- (1-exp(-c))/(exp(-c)*(1-exp(-c*length(x))))
+    return(c*sum(x)-length(x)*log(C))
   }
 )
 
@@ -367,29 +372,39 @@ computeProbability <- list(
   RestrictedZeta     = function(x) x^-3/zeta(3, deriv = 0),
   Zeta               = function(x, gamma) x^(-gamma)/zeta(gamma, deriv = 0),
   RightTZeta         = function(x, gamma, kmax) x^(-gamma)/sum((1:kmax)^(-gamma)),
-  Altmann            = function(x, gamma, delta) {
+  Altmann            = function(x, gamma, delta){
     cinv <- sum(sapply(1:length(x), function(k) k^(-gamma) * exp(-delta*k)))
     x^(-gamma)*exp(-delta*x)/cinv
+  },
+  RightTExponential  = function(x, c){
+    C <- (1-exp(-c))/(exp(-c)*(1-exp(-c*length(x))))
+    C*exp(-c*x)
   }
 )
 
-startParameters <- list(
+startParameters <- function(x){
+  list(
   startDP = list(lambda = 1),
   startDG = list(q = 1),
   startRZ = NULL,
   startZ  = list(gamma = 3),
   startRTZ= list(gamma = 0.05, kmax = max(x)),
-  startMA  = list(gamma = 1, delta = 0)
-)
+  startMA  = list(gamma = 1, delta = 0),
+  startRTE = list(c = 1)
+  )
+}
 
-bounds <- list(
+bounds <- function(x){
+  list(
   boundsDP = list(lower = 1e-7, upper = NA),
   boundsDG = list(lower = 1e-7, upper = 1-1e-7),
   boundsRZ = list(lower = NA, upper = NA),
   boundsZ  = list(lower = 1+1e-7, upper = NA),
   boundsRTZ= list(lower = c(1, max(x)), upper = NA),
-  boundsMA = list(lower = c(0,0), upper = NA)
-)
+  boundsMA = list(lower = c(0,0.00001), upper = NA),
+  boundsRTE= list(lower = 0.0001, upper = 10)
+  )
+}
 
 NModels <- length(computeMinusLogLik)
 
@@ -399,10 +414,10 @@ calculateMLE <- function(version){
     print(paste("Computing model", names(computeMinusLogLik)[i]))
     if(DDnum_params[i] > 0) {
           mle(minuslogl = computeMinusLogLik[[i]],
-              start = startParameters[[i]],
+              start = startParameters(x)[[i]],
               method = "L-BFGS-B",
-              lower = bounds[[i]]$lower,
-              upper = bounds[[i]]$upper)
+              lower = bounds(x)[[i]]$lower,
+              upper = bounds(x)[[i]]$upper)
     } else NULL
   })#lapply
   names(res) <- names(computeMinusLogLik)
@@ -513,7 +528,6 @@ print(kable(table2Dif, align = "c", caption = paste("AIC difference results for 
 #   kable_styling(latex_options = c("striped", "hold_position")))
 
 ```
-
 
 
 ## Degree distribution

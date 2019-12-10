@@ -18,7 +18,6 @@ library(kableExtra) # For tables
 library(ggplot2)
 ```
 
-# Input
 ```{r}
 versions <- c("BA", "BA_RA", "BA_NG")
 names(versions) <- c("Barabasi-Albert", "Random Attachment", "No Growth")
@@ -29,8 +28,6 @@ tmax <- 10000
 arrivalTimes <- c(1, 10, 100, 1000)
 names(m0) <- names(n0) <- versions
 ```
-
-## Degree distribution
 
 ```{r}
 degreeDistributions <- vector(mode = "list", length = length(versions))
@@ -46,7 +43,6 @@ for(v in versions){
 }
 ```
 
-## Degree evolution
 ```{r}
 degreeOverTime <- vector(mode = "list", length = length(versions))
 names(degreeOverTime) <- versions
@@ -80,9 +76,6 @@ for(v in versions){
 ```
 
 
-# Time-series 
-## Functions
-### Models 
 ```{r}
 # Function to generate a list of maximum likelihood given a set of sequence statistics
 TSmodel_names <- c('0', '1', '2', '3', '4', '0+', '1+', '2+', '3+', '4+')
@@ -121,7 +114,6 @@ TSmodels <-
   )
 ```
 
-### Starting parameters
 
 ```{r}
 TSstart_parameters_v0 <- function(dat, plus = FALSE) {
@@ -215,7 +207,6 @@ TSstart_parameters <- function(dat,i){
 }
 ```
 
-### Solving NLS
 
 ```{r}
 # Calculate optimal parameters nls
@@ -258,7 +249,6 @@ solve1Version <- function(version){
 }
 ```
 
-## Fitting models (NLS)
 ```{r message=FALSE, warning=FALSE, include=FALSE}
 nls_results <- lapply(versions, solve1Version)
 names(nls_results) <- versions
@@ -267,7 +257,6 @@ nls_results2 <- lapply(versions, function(x) solveAllModels2(degreeOverTime[[x]]
 names(nls_results2) <- versions
 ```
 
-### Calculating AICs
 
 ```{r}
 # Get AICs for each vertex
@@ -303,7 +292,6 @@ table2DifAll[,TSmodel_names] <- table2DifAll[,TSmodel_names]-apply(table2DifAll[
 rownames(table2DifAll) <- versions
 ```
 
-### Plotting 
 
 ```{r}
 # Evolution plots + theoretical curve
@@ -349,8 +337,6 @@ plotEvolutions2 <- function(version){
 }
 ```
 
-## Retrieving the coefficients of the models
-
 ```{r}
 # Table 3
 # get_paramsTS <- function(version){
@@ -360,9 +346,6 @@ plotEvolutions2 <- function(version){
 # rownames(TS_params) <- names(ts)
 ```
 
-# Degree distribution functions
-
-## Functions
 ```{r}
 DDmodel_names <- c('DisplacedPoisson', 'DisplacedGeometric', 'RestrictedZeta', 'Zeta', 'RightTZeta', 'Altmann', 'RightTExponential')
 DDnum_params <- c(1, 1, 0, 1, 2, 2, 1)
@@ -505,8 +488,6 @@ computeAICs <- function(models, N){
 }
 ```
 
-## Fitting models (MLE)
-
 ```{r}
 mle_models <- list()
 for (version in names(degreeDistributions)){
@@ -516,7 +497,6 @@ for (version in names(degreeDistributions)){
 ```
 
 
-## Evaluating
 ```{r}
 # Compute AIC
 AICs <- do.call(rbind, lapply(names(degreeDistributions), function(v) computeAICs(mle_models[[v]], length(degreeDistributions[[v]]))))
@@ -531,7 +511,7 @@ dAICs <- AICs - apply(AICs, 1, min)
 DDresults <- list(aic=as.data.frame(AICs), delta=as.data.frame(dAICs))
 ```
 
-
+  
 # Introduction
 The goal of this laboratory work is to study ...
 
@@ -556,7 +536,7 @@ From the previous plots we conclude that our simulations worked well since the e
 
 Next we show the results of the model selection process based on the AIC of the fitted models. At the beggining we were not sure if we had to fit the evolution model for the chosen vertices individually or all at once. For this reason, we did both versions of the analysis.  
 
-```{r}
+```{r results = “as.is”}
 table2Dif[,3:ncol(table2Dif)] <- round(table2Dif[,3:ncol(table2Dif)], 1)
 
 print(kable(table2Dif, align = "c", caption = paste("AIC difference results for the time series models fitting the models separately for each chosen vertex")) %>% 
@@ -586,7 +566,7 @@ Indeed, the fitted curve describes the mean behaviour of the data. On the other 
 ## Degree distribution
 
 Here we show the AIC differences for the fitted degree distribution models.
-```{r}
+```{r results = “as.is”}
 # Table AIC diff
 print(kable(round(DDresults$delta,digits = 2), align = "c", caption = paste("AIC difference results for the degree distribution data")) %>% 
   kable_styling(latex_options = c("striped", "hold_position")))

@@ -6,7 +6,7 @@ output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, cache = TRUE, fig.width = 6, fig.height = 4, fig.show = "hold", out.width = "75%")
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, cache = TRUE, fig.width = 6, fig.height = 4, fig.show = "hold", out.width = "50%")
 library(data.table)
 library(igraph)
 library(nlstools) # For NLS
@@ -39,9 +39,10 @@ for(v in versions){
   # Read degree distribution files
   degrees <- fread(paste0("out/",v,"/degreees.txt"), data.table = F)
   degrees <- unname(t(degrees)[,1])
+  if(v == "BA_NG") degrees <- degrees[1:n0[v]]
   
   # Store them in list    
-  degreeDistributions[[v]] <- degrees[1:tmax]
+  degreeDistributions[[v]] <- degrees
 }
 ```
 
@@ -251,7 +252,7 @@ solveAllModels2 <- function(data) {
   })
 }
 
-# Solve for all chosen vertices
+# Solve for each vertex
 solve1Version <- function(version){
   lapply(arrivalTimes, function(x) solveAllModels2(degreeOverTime[[version]][degreeOverTime[[version]]$ti==x,]))
 }
@@ -261,12 +262,15 @@ solve1Version <- function(version){
 ```{r message=FALSE, warning=FALSE, include=FALSE}
 nls_results <- lapply(versions, solve1Version)
 names(nls_results) <- versions
+
+nls_results2 <- lapply(versions, function(x) solveAllModels2(degreeOverTime[[x]]))
+names(nls_results2) <- versions
 ```
 
 ### Calculating AICs
 
 ```{r}
-# Get AICs
+# Get AICs for each vertex
 table2 <- data.frame(expand.grid(versions,arrivalTimes))
 table2 <- table2[order(table2$Var1),]
 table2 <- cbind(table2, matrix(NA, nrow = nrow(table2), ncol = length(TSmodels)))
@@ -282,6 +286,21 @@ for(v in 1:length(versions)){
 # AIC difference  
 table2Dif <- table2
 table2Dif[,TSmodel_names] <- table2Dif[,TSmodel_names]-apply(table2Dif[,TSmodel_names], 1, min)
+
+# Get AICs for combined
+
+table2 <- matrix(NA, nrow = length(versions), ncol = length(TSmodels))
+colnames(table2) <-  TSmodel_names
+for(v in 1:length(versions)){
+  for(i in 1:length(TSmodels)){
+    table2[v, TSmodel_names[i]] <- AIC(nls_results2[[v]][[i]])
+  }
+}
+
+# AIC difference  
+table2DifAll <- table2
+table2DifAll[,TSmodel_names] <- table2DifAll[,TSmodel_names]-apply(table2DifAll[,TSmodel_names], 1, min)
+rownames(table2DifAll) <- versions
 ```
 
 ### Plotting 
@@ -306,6 +325,27 @@ plotEvolutions <- function(version){
   stat_function(fun=theoreticalCurves[[version]], geom="line", mapping = aes(color = "Theoretical")) +
   scale_color_manual(values = c(2,3,4,5,1),
   labels=c(paste("AT", arrivalTimes), "Theoretical curve"))
+}
+
+# Evolution plots + theoretical curve
+plotEvolutions2 <- function(version){
+
+  m <- m0[version]
+  n <- n0[version]
+  
+  theoreticalCurves <- list(
+    BA = function(x) 3.0125*x^0.6108+66.5658,
+    BA_RA = function(x) 10.1164*log(x+79.9676)-0.7215,
+    BA_NG = function(x) 0.02185*x^0.99101+ 4.03398 
+  )
+  
+  ggplot(degreeOverTime[[version]], aes(x = t, y = degree)) + 
+  geom_line(aes(color = as.factor(ti)), size = 1) +
+  theme_minimal() + labs(color = "Arrival time") + 
+  labs(color = NULL, y = "Scaled degree", x = "Time step") +
+  stat_function(fun=theoreticalCurves[[version]], geom="line", mapping = aes(color = "Fitted")) +
+  scale_color_manual(values = c(2,3,4,5,1),
+  labels=c(paste("AT", arrivalTimes), "Fitted curve"))
 }
 ```
 
@@ -365,7 +405,7 @@ computeMinusLogLik <- list(
 computeProbability <- list(
   DisplacedPoisson   = function(x, lambda) lambda^x*exp(-lambda)/(factorial(x)*(1-exp(-lambda))),
   DisplacedGeometric = function(x, q) (1-q)^(x-1)*q,
-  RestrictedZeta     = function(x) x^-3/zeta(3, deriv = 0),
+  RestrictedZeta     = function(x) x^(-3)/zeta(3, deriv = 0),
   Zeta               = function(x, gamma) x^(-gamma)/zeta(gamma, deriv = 0),
   RightTZeta         = function(x, gamma, kmax) x^(-gamma)/sum((1:kmax)^(-gamma)),
   Altmann            = function(x, gamma, delta){
@@ -439,8 +479,9 @@ visualizeDDFit <- function(version, whichModels = 1:length(mle_models[[version]]
     
     # Plot
     plot(spectrum, counts, log = "xy", ylim = c(1, tmax), col=viridis(length(spectrum)))
+    axis(2, at=10^(1:10))
     lines(spectrum, 
-          length(x)*sapply(spectrum, function(z) do.call(computeProbability[[i]], as.list(c(x=z, opt_params)))),
+          length(degrees)*sapply(spectrum, function(z) do.call(computeProbability[[i]], as.list(c(x=z, opt_params)))),
           col = "darkorchid", lwd=3)
     legend('topright', legend=parse(text=names(mle_models[[version]])[i]), col='darkorchid', lwd=3)
   }
@@ -496,11 +537,10 @@ The goal of this laboratory work is to study ...
 
 # Results
 
-Here are the parameters that were used in our simulations of network generating models:
+In the following table, we show the parameters that we used in our simulations of network generating models. m0 is the number of edges added at each time, n0 the number of initial vertices and the initial configuration means the type of graph that is used for the initial vertices. 
 ```{r}
-kable(data.frame(Version = names(versions), m0 = m0, n0 = n0, InitialConf = c("Ring", "Ring", "Ring")), row.names = F)
+kable(data.frame(Version = names(versions), m0 = m0, n0 = n0, Initial_Conf = c("Ring", "Ring", "Ring")), row.names = F, align = "c", caption = paste("Initial settings for the simulation algorithm")) 
 ```
-
 
 ## Degree evolution
 
@@ -512,10 +552,17 @@ plotEvolutions("BA_RA")
 plotEvolutions("BA_NG")
 ```
 
+From the previous plots we conclude that our simulations worked well since the empirical curves follow approximately the theoretical curve. After running the simulations several times we observed the relatively large deviations observed in some cases is due to random variability, because all 4 trajectories appear sometimes above and sometimes below the theoretical curve. This could have been shown explicitly by computing the average of several simulations, but we had to prioritize other parts of the work.
+
+Next we show the results of the model selection process based on the AIC of the fitted models. At the beggining we were not sure if we had to fit the evolution model for the chosen vertices individually or all at once. For this reason, we did both versions of the analysis.  
+
 ```{r}
 table2Dif[,3:ncol(table2Dif)] <- round(table2Dif[,3:ncol(table2Dif)], 1)
 
-print(kable(table2Dif, align = "c", caption = paste("AIC difference results for the time series data")) %>% 
+print(kable(table2Dif, align = "c", caption = paste("AIC difference results for the time series models fitting the models separately for each chosen vertex")) %>% 
+  kable_styling(latex_options = c("striped", "hold_position")))
+
+print(kable(table2DifAll, align = "c", caption = paste("AIC difference results for the time series models fitting the models separately for each chosen vertex")) %>% 
   kable_styling(latex_options = c("striped", "hold_position")))
 
 # print(kable(table2Dif[,1:7], align = "c", caption = paste("AIC difference results for the time series data")) %>% 
@@ -526,31 +573,59 @@ print(kable(table2Dif, align = "c", caption = paste("AIC difference results for 
 
 ```
 
+The results are more or less consistent stratifying by vertex, as expected by the preliminar plots. Therefore, we can focus on the results for all 4 vertices at once. Basically we obtain that for both the Barabasi-Albert and the preferential attachment without vertex growth model 2+ is the best fit. For the random attachment with vertex growth we have that the best evolution model is 4+. In order to see if the fitted models make sense, we show again the evolution plots but with the best fitting curve.
+
+```{r}
+plotEvolutions2("BA")
+plotEvolutions2("BA_RA")
+plotEvolutions2("BA_NG")
+```
+
+Indeed, the fitted curve describes the mean behaviour of the data. On the other hand, we observe that the models that were selected are of the same family than the theoretical curves, matching also with the expectations. Even though it is not shown here, we found that the fitted parameters are also close to the theoretical ones, but not the same. For example for the Barabasi-Albert model our exponent is 0.61, instead of 0.5. Intercepts were chosen by the selected models, and they are compatible with the theoretical formula, which is actually an approximation.
 
 ## Degree distribution
 
-Plots
-```{r}
-visualizeDDFit("BA")
-visualizeDDFit("BA_RA")
-visualizeDDFit("BA_NG")
-```
-
-AIC tables
+Here we show the AIC differences for the fitted degree distribution models.
 ```{r}
 # Table AIC diff
 print(kable(round(DDresults$delta,digits = 2), align = "c", caption = paste("AIC difference results for the degree distribution data")) %>% 
   kable_styling(latex_options = c("striped", "hold_position")))
 ```
 
+As we see, the selected model for the Barabasi-Albert model is the Zeta distribution with the fixed parameter gamma, the exponent, fixed to 3. Unexpectedly, the same degree distribution model is selected for the random attachment version. For these cases, the plots are:
+
+```{r, out.width="45%"}
+visualizeDDFit("BA", 3)
+visualizeDDFit("BA_RA", 3)
+```
+
+But obviously this is not correct. We have tried very hard to fix these problems, but were not able to find what we are doing wrong. It is very strange because for other models that are not selected with the AIC, the fitted curve looks better:
+
+```{r, out.width="20%"}
+visualizeDDFit("BA")
+visualizeDDFit("BA_RA")
+```
+
+The no-growth version, for which a gaussian distribution was expected, is closer to the displaced Poisson with a lambda parameter that matches exactly with the mean degree, which is a very large $\lambda$. This is also in agreement with the fact that the Poisson distribution converges to a Normal distribution when $\lambda \to \infty$. However, it is difficult for numerical reasons to plot the fitting curve using the probability predicted by the displaced Poisson function that we defined. Instead, we will just show that the degree distribution in this case indeed looks Gaussian.
+
+```{r, out.width="40%"}
+plot(degreeDistributions$BA_NG)
+hist(degreeDistributions$BA_NG)
+```
 
 # Discussion
 
+Regarding the time evolution of the nodes, we were able to check that the scaled degree of the nodes follow approximately the theoretical curves, with some deviations due to random variability. The fitted curves in this case were also in agreement with the theoretical formulas, being selected the models of the corresponding family but with some deviations in the parameters. Since the deviations are not so large, we think that they might be due to the small sample size and the large variability of the trajectories. We expect that with more vertices these should be more precise, and the average of the trajectories match much better to the theoretical result.
+
+Regarding the degree distributions, we have seen that some of the fitted models give reasonable results, but we were not able to find out if our problems were due to the fitted parameters or to the visualization procedure.
+
 # Methods
 
-In order to do the simulation we developed a in c++ a small program that implemented all the simulations. We defined a class named "representation" that store the degree of each vertex, the adjancy matrix and a vector of vertices where each vertex appears the same amount of times as it's degree, and with that, we could make fast simulations. 
+In order to do the simulation we developed in C++ a small program that implemented all the simulations. We defined a class named "representation" that stores the degree of each vertex, the adjancy matrix and a vector of vertices where each vertex appears the same amount of times as it's degree, and with that, we could make fast simulations. 
 
-For creating the inital graph we tested with two different types of graph: Complete graph and a ring graph achetypes. We realised that using already a medium sized complete graph, the degrees where distorsioned a lot, since the subgraph was absorving almost all the edges. Because that, we tried starting with a ring graph obtaining much better results for the simulations. We used also that graph for initialzing the "No growth" simulation.
+For creating the inital graph we tested with two different types of graph: complete graph and a ring graph achetypes. We realised that using already a medium sized complete graph, the degrees where distorsioned a lot, since the subgraph was absorving almost all the edges. Because that, we tried starting with a ring graph obtaining much better results for the simulations. We used also that graph for initialzing the "No growth" simulation.
 
-When making the plots we realised that they have some variance due to the randomness, we would have liked to compute an average of progression of the vertices in order to have much better fits to the theoretical one, but we run out of time.
+The model choice for the time series data was based on the same procedure that we followed on lab 4. We obtained good initial parameters by using linear model versions or approximated linear versions, by taking logarithm or square root, and used the results of the corresponding linear regression as starting paramters. We did some more adjustments to avoid inifinite values. In addition, we changed the nls method from the nls to the nlsLM, which showed less convergence problems. 
+
+For the degree distributions, we followed the same procedure as in lab 2, with the additional Altmann and Right Truncated Exponential distributions (we derived the corresponding log likelihood) added to the ensemble of models. Some more adjustments to the starting parameters and the bounds were made, ensuring convergence for all the models. 
 

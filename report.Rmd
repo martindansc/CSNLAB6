@@ -424,11 +424,6 @@ calculateMLE <- function(version){
   return(res)
 }
 
-# Sample size corrected AIC function
-get_AIC <- function(m2logL,K,N) {
-m2logL + 2*K*N/(N-K-1) 
-}
-
 # Plot fitted vs real
 visualizeDDFit <- function(version, whichModels = 1:length(mle_models[[version]])){
   for(i in whichModels){
@@ -454,6 +449,23 @@ visualizeDDFit <- function(version, whichModels = 1:length(mle_models[[version]]
     legend('topright', legend=parse(text=names(mle_models[[version]])[i]), col='darkorchid', lwd=3)
   }
 }
+
+# Sample size corrected AIC function
+get_AIC <- function(m2logL,K,N) {
+m2logL + 2*K*N/(N-K-1) 
+}
+
+# AIC function
+computeAICs <- function(models, N){
+  sapply(1:length(models), function(i){
+    if(is.null(models[[i]])){
+      m2LL <- 2*computeMinusLogLik[[i]]()
+    } else{
+      m2LL <- attributes(summary(models[[i]]))$m2logL
+    }
+    get_AIC(m2LL, DDnum_params[i], N)
+  })
+}
 ```
 
 ## Fitting models (MLE)
@@ -469,23 +481,17 @@ for (version in names(degreeDistributions)){
 
 ## Evaluating
 ```{r}
-computeAICs <- function(models, N){
-  sapply(1:length(models), function(i){
-    if(is.null(models[[i]])){
-      m2LL <- 2*computeMinusLogLik[[i]]
-    } else{
-      m2LL <- attributes(summary(models[[i]]))$m2logL
-    }
-    get_AIC(m2LL, DDnum_params[i], N)
-  })
-}
-
+# Compute AIC
 AICs <- do.call(rbind, lapply(names(degreeDistributions), function(v) computeAICs(mle_models[[v]], length(degreeDistributions[[v]]))))
 
-aic_df <- as.data.frame(do.call(rbind, stat$aic))
-colnames(aic_df) <- DDmodel_names
+# Set names
+colnames(AICs) <- DDmodel_names
+rownames(AICs) <- names(versions)
 
-DDresults <- list(aic=aic_df, delta=d_aic_df)
+# Compute AIC difference
+dAICs <- AICs - apply(AICs, 1, min)
+
+DDresults <- list(aic=as.data.frame(AICs), delta=as.data.frame(dAICs))
 ```
 
 
@@ -541,14 +547,9 @@ visualizeDDFit("BA_NG")
 
 AIC tables
 ```{r}
-# Table AIC
-print(kable(round(DDresults$aic, digits = 2), align = "c", caption = paste("AIC results for the degree distribution data")) %>% 
-  kable_styling(latex_options = c("striped", "hold_position")))
-
 # Table AIC diff
 print(kable(round(DDresults$delta,digits = 2), align = "c", caption = paste("AIC difference results for the degree distribution data")) %>% 
   kable_styling(latex_options = c("striped", "hold_position")))
-
 ```
 
 
